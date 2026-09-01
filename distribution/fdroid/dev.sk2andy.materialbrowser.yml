@@ -19,9 +19,15 @@ Builds:
     subdir: app
     gradle:
       - foss
+  - versionName: '0.32'
+    versionCode: 32000
+    commit: REPLACE_WITH_V0.32_COMMIT_SHA
+    subdir: app
+    gradle:
+      - foss
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9]+(\.[0-9]+){1,2}$
 UpdateCheckData: gradle.properties|candy.versionCode=(\d+)|.|candy.versionName=(.+)
-CurrentVersion: '0.31'
-CurrentVersionCode: 31000
+CurrentVersion: '0.32'
+CurrentVersionCode: 32000
