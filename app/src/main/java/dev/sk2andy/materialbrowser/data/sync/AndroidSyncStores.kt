@@ -186,7 +186,7 @@ class AndroidSyncSecretProtector(
     }
 }
 
-private fun java.io.InputStream.readBytesLimited(maximum: Int): ByteArray {
+internal fun java.io.InputStream.readBytesLimited(maximum: Int): ByteArray {
     val output = java.io.ByteArrayOutputStream()
     val buffer = ByteArray(8_192)
     var total = 0

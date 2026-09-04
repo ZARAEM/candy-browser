@@ -233,10 +233,21 @@ import dev.sk2andy.materialbrowser.data.ToppingCatalogRepository
 import dev.sk2andy.materialbrowser.data.ToppingDownloadResult
 import dev.sk2andy.materialbrowser.data.UserScriptRepository
 import dev.sk2andy.materialbrowser.data.UserScriptValueStore
+import dev.sk2andy.firefoxsync.FirefoxAccountLoginAttempt
+import dev.sk2andy.firefoxsync.FirefoxAccountOAuth
 import dev.sk2andy.materialbrowser.data.sync.AndroidSyncCacheStore
 import dev.sk2andy.materialbrowser.data.sync.AndroidSyncSettingsStore
 import dev.sk2andy.materialbrowser.data.sync.AndroidSyncVaultStore
 import dev.sk2andy.materialbrowser.data.sync.CandySyncRepository
+import dev.sk2andy.materialbrowser.data.sync.firefox.AndroidFirefoxSyncCacheStore
+import dev.sk2andy.materialbrowser.data.sync.firefox.AndroidFirefoxSyncSettingsStore
+import dev.sk2andy.materialbrowser.data.sync.firefox.AndroidFirefoxSyncVaultStore
+import dev.sk2andy.materialbrowser.data.sync.firefox.FirefoxSyncRepository
+import dev.sk2andy.materialbrowser.sync.firefox.FirefoxAccountWebChannelScript
+import dev.sk2andy.materialbrowser.sync.firefox.FirefoxSyncDefaults
+import dev.sk2andy.materialbrowser.sync.firefox.FirefoxSyncLoginOutcome
+import dev.sk2andy.materialbrowser.sync.firefox.FirefoxSyncRepositoryState
+import dev.sk2andy.materialbrowser.sync.firefox.FirefoxSyncStatus
 import dev.sk2andy.materialbrowser.reader.ReaderExtractionFailure
 import dev.sk2andy.materialbrowser.reader.ReaderExtractionParser
 import dev.sk2andy.materialbrowser.reader.ReaderExtractionResult
@@ -727,6 +738,15 @@ class BrowserController(
     var syncState by mutableStateOf(syncRepository.currentState())
         private set
     private var syncObservation: AutoCloseable? = null
+    private val firefoxSyncRepository = FirefoxSyncRepository(
+        settingsStore = AndroidFirefoxSyncSettingsStore(activity),
+        vaultStore = AndroidFirefoxSyncVaultStore(activity),
+        cacheStore = AndroidFirefoxSyncCacheStore(activity),
+    )
+    var firefoxSyncState by mutableStateOf(firefoxSyncRepository.currentState())
+        private set
+    private var firefoxSyncObservation: AutoCloseable? = null
+    private val firefoxLoginScriptHandlers = mutableMapOf<WebView, ScriptHandler?>()
     private val locallyPendingSyncCandyIds = mutableSetOf<String>()
     private val pendingSyncNavigationRunnables = mutableMapOf<String, Runnable>()
     private val remoteSyncNavigationUrls = mutableMapOf<String, String>()
@@ -1628,6 +1648,11 @@ class BrowserController(
         syncObservation = syncRepository.observe { state ->
             mainHandler.post {
                 if (!destroyed) applySyncRepositoryState(state)
+            }
+        }
+        firefoxSyncObservation = firefoxSyncRepository.observe { state ->
+            mainHandler.post {
+                if (!destroyed) applyFirefoxSyncState(state)
             }
         }
     }
@@ -4996,6 +5021,156 @@ class BrowserController(
         syncRepository.refresh()
     }
 
+    fun beginFirefoxLogin(): FirefoxAccountLoginAttempt = firefoxSyncRepository.beginLogin()
+
+    fun cancelFirefoxLogin() {
+        firefoxSyncRepository.cancelLogin()
+    }
+
+    fun completeFirefoxLogin(code: String) {
+        firefoxSyncRepository.completeLogin(code).whenComplete { outcome, _ ->
+            mainHandler.post {
+                if (destroyed) return@post
+                val message = when (outcome) {
+                    FirefoxSyncLoginOutcome.SignedIn -> R.string.firefox_sync_toast_signed_in
+                    FirefoxSyncLoginOutcome.AuthenticationFailed -> R.string.firefox_sync_error_authentication
+                    FirefoxSyncLoginOutcome.MissingSyncKeys -> R.string.firefox_sync_error_missing_keys
+                    FirefoxSyncLoginOutcome.NoLoginInProgress,
+                    FirefoxSyncLoginOutcome.Failed,
+                    null,
+                    -> R.string.firefox_sync_error_failed
+                }
+                Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun refreshFirefoxSync() {
+        firefoxSyncRepository.refresh(force = true)
+    }
+
+    fun signOutFirefoxSync() {
+        firefoxSyncRepository.signOut()
+    }
+
+    /** Opens a synced Zen tab in the Candy profile mapped from its container, or the active one. */
+    fun openZenTab(url: String, containerGuid: String?): Boolean {
+        val profileId = if (profilesEnabled) {
+            ZenContainerProfileRules.profileIdFor(containerGuid, profiles, activeProfileId)
+        } else {
+            activeProfileId
+        }
+        return openHistoryEntry(url, profileId)
+    }
+
+    /**
+     * Builds the interactive WebView for a Mozilla account login. It uses the ephemeral incognito
+     * WebView profile so account cookies never touch browsing profiles, only follows navigations to
+     * Mozilla's account hosts, and bridges the login page's WebChannel messages to native.
+     */
+    fun createFirefoxAccountLoginWebView(
+        attempt: FirefoxAccountLoginAttempt,
+        onProgressChanged: (Int) -> Unit,
+        onCode: (String) -> Unit,
+        onBlockedNavigation: (String) -> Unit,
+    ): WebView {
+        val bridgeToken = UUID.randomUUID().toString().replace("-", "")
+        val bridgeSupported =
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) &&
+                WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+        return WebView(activity).apply {
+            if (isProfileIsolationSupported) WebViewCompat.setProfile(this, incognitoWebViewProfileName)
+            val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            setBackgroundColor(if (nightMode == Configuration.UI_MODE_NIGHT_YES) Color.BLACK else Color.WHITE)
+            with(settings) {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                allowFileAccess = false
+                allowContentAccess = false
+                @Suppress("DEPRECATION")
+                allowFileAccessFromFileURLs = false
+                @Suppress("DEPRECATION")
+                allowUniversalAccessFromFileURLs = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                javaScriptCanOpenWindowsAutomatically = false
+                setSupportMultipleWindows(false)
+                safeBrowsingEnabled = true
+            }
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    val target = request.url
+                    val allowed = target.scheme == "https" &&
+                        target.host?.lowercase() in FirefoxSyncDefaults.loginHosts
+                    if (!allowed) onBlockedNavigation(target.toString())
+                    return !allowed
+                }
+            }
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView, newProgress: Int) {
+                    onProgressChanged(newProgress.coerceIn(0, 100))
+                }
+            }
+            var scriptHandler: ScriptHandler? = null
+            if (bridgeSupported) {
+                runCatching {
+                    WebViewCompat.addWebMessageListener(
+                        this,
+                        FirefoxAccountWebChannelScript.BRIDGE_NAME,
+                        FirefoxSyncDefaults.webChannelOrigins,
+                    ) { _, message, _, isMainFrame, _ ->
+                        if (!isMainFrame) return@addWebMessageListener
+                        val envelope = FirefoxAccountWebChannelScript.unwrapEnvelope(message.data, bridgeToken)
+                            ?: return@addWebMessageListener
+                        envelope.optJSONObject("message")
+                            ?.optString("command")
+                            ?.takeIf(String::isNotEmpty)
+                            ?.let(firefoxSyncRepository::noteBridgeCommand)
+                        FirefoxAccountOAuth.parseWebChannelMessage(attempt, envelope.toString())?.let(onCode)
+                    }
+                    scriptHandler = WebViewCompat.addDocumentStartJavaScript(
+                        this,
+                        FirefoxAccountWebChannelScript.javascript(bridgeToken, FirefoxSyncDefaults.CLIENT_ID),
+                        FirefoxSyncDefaults.webChannelOrigins,
+                    )
+                }
+            }
+            firefoxLoginScriptHandlers[this] = scriptHandler
+            loadUrl(firefoxSyncRepository.authorizationUrl(attempt))
+        }
+    }
+
+    fun releaseFirefoxAccountLoginWebView(webView: WebView) {
+        if (!firefoxLoginScriptHandlers.containsKey(webView)) return
+        firefoxLoginScriptHandlers.remove(webView)?.let { handler -> runCatching(handler::remove) }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            runCatching {
+                WebViewCompat.removeWebMessageListener(webView, FirefoxAccountWebChannelScript.BRIDGE_NAME)
+            }
+        }
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        webView.stopLoading()
+        webView.webChromeClient = null
+        webView.destroy()
+    }
+
+    private fun applyFirefoxSyncState(state: FirefoxSyncRepositoryState) {
+        firefoxSyncState = state
+        if (!profilesEnabled || state.status != FirefoxSyncStatus.Ready || state.snapshot.containers.isEmpty()) return
+        val reconciliation = ZenContainerProfileRules.reconcile(
+            containers = state.snapshot.containers.values,
+            existingProfiles = profiles,
+            isolationSupported = isProfileIsolationSupported,
+            newProfileId = { UUID.randomUUID().toString() },
+        )
+        if (!reconciliation.changed) return
+        reconciliation.updated.forEach { updated ->
+            val index = profiles.indexOfFirst { it.id == updated.id }
+            if (index >= 0) profiles[index] = updated
+        }
+        profiles += reconciliation.created
+        persist()
+    }
+
     fun onAppearanceConfigurationChanged() {
         val externalPreview = externalLinkPreviewState
         if (linkPeekPreviewAssignments.isNotEmpty()) contentActions.dismiss()
@@ -5699,6 +5874,7 @@ class BrowserController(
     fun onStart() {
         isActivityStarted = true
         syncRepository.startRealtime()
+        firefoxSyncRepository.refresh()
         mainHandler.removeCallbacks(syncRefreshRunnable)
         mainHandler.post(syncRefreshRunnable)
     }
@@ -5778,6 +5954,10 @@ class BrowserController(
         syncObservation?.close()
         syncObservation = null
         syncRepository.close()
+        firefoxSyncObservation?.close()
+        firefoxSyncObservation = null
+        firefoxSyncRepository.close()
+        firefoxLoginScriptHandlers.keys.toList().forEach(::releaseFirefoxAccountLoginWebView)
         closeFindInPage()
         releaseExternalLinkPreviewRuntime(resumeSelectedTab = false)
         clearWebMediaPresentation(pause = true)

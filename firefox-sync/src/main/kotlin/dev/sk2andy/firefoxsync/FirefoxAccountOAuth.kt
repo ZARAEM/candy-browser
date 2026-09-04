@@ -95,6 +95,8 @@ object FirefoxAccountOAuth {
     const val WEB_CHANNEL_CONTEXT = "oauth_webchannel_v1"
     const val WEB_CHANNEL_ID = "account_updates"
     const val WEB_CHANNEL_LOGIN_COMMAND = "fxaccounts:oauth_login"
+    const val WEB_CHANNEL_STATUS_COMMAND = "fxaccounts:fxa_status"
+    const val WEB_CHANNEL_CAN_LINK_COMMAND = "fxaccounts:can_link_account"
 
     private const val MAX_TOKEN_LENGTH = 4_096
     private const val MAX_JWE_LENGTH = 16_384

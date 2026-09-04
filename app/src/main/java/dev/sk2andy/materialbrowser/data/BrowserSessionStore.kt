@@ -12,6 +12,7 @@ import dev.sk2andy.materialbrowser.browser.DEFAULT_BROWSER_PROFILE
 import dev.sk2andy.materialbrowser.browser.DEFAULT_PROFILE_ID
 import dev.sk2andy.materialbrowser.browser.DesktopSiteRules
 import dev.sk2andy.materialbrowser.browser.DomainMuteRules
+import dev.sk2andy.materialbrowser.browser.MAX_PROFILE_NAME_LENGTH
 import dev.sk2andy.materialbrowser.browser.PageTranslationProvider
 import dev.sk2andy.materialbrowser.browser.SearchEngine
 import dev.sk2andy.materialbrowser.browser.SearxngRules
@@ -148,6 +149,13 @@ class BrowserSessionStore internal constructor(
                                         selectedTabId = item.optString("selectedTabId")
                                             .takeIf(String::isNotBlank),
                                         isolationEnabled = item.optBoolean("isolationEnabled", false),
+                                        name = item.optString("name").trim()
+                                            .takeIf(String::isNotEmpty)
+                                            ?.take(MAX_PROFILE_NAME_LENGTH),
+                                        accentHue = item.optInt("accentHue", -1)
+                                            .takeIf { hue -> hue in 0..359 },
+                                        zenContainerGuid = item.optString("zenContainerGuid").trim()
+                                            .takeIf { guid -> guid.isNotEmpty() && guid.length <= 64 },
                                     ),
                                 )
                             }
@@ -172,7 +180,10 @@ class BrowserSessionStore internal constructor(
                     .put("id", profile.id)
                     .put("emoji", profile.emoji)
                     .put("selectedTabId", profile.selectedTabId)
-                    .put("isolationEnabled", profile.isolationEnabled),
+                    .put("isolationEnabled", profile.isolationEnabled)
+                    .put("name", profile.name)
+                    .put("accentHue", profile.accentHue)
+                    .put("zenContainerGuid", profile.zenContainerGuid),
             )
         }
         preferences.edit()

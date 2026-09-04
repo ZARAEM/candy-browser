@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Face
@@ -103,6 +104,7 @@ import dev.sk2andy.materialbrowser.sync.SyncConnectionSettings
 import dev.sk2andy.materialbrowser.sync.SyncDeviceIconCatalog
 import dev.sk2andy.materialbrowser.sync.SyncEnrollmentOutcome
 import dev.sk2andy.materialbrowser.sync.SyncRepositoryState
+import dev.sk2andy.materialbrowser.sync.firefox.FirefoxSyncRepositoryState
 import dev.sk2andy.materialbrowser.ui.theme.browserChromeColor
 import kotlin.math.roundToInt
 
@@ -118,6 +120,7 @@ internal enum class SettingsDestination {
     ToppingCatalog,
     SiteCapsules,
     Sync,
+    FirefoxSync,
     ProtectionAndData,
     AboutLegal,
 }
@@ -203,6 +206,7 @@ internal fun SettingsScreen(
     toppingCatalogState: ToppingCatalogUiState,
     syncState: SyncRepositoryState,
     syncIconCatalog: SyncDeviceIconCatalog,
+    firefoxSyncState: FirefoxSyncRepositoryState = FirefoxSyncRepositoryState.SIGNED_OUT,
     onDestinationChanged: (SettingsDestination) -> Unit,
     onAppearanceSettingsChanged: (AppearanceSettings) -> Unit,
     onDownloadSettingsChanged: (BrowserDownloadSettings) -> Unit,
@@ -243,6 +247,10 @@ internal fun SettingsScreen(
     onConfigureSync: (SyncConnectionSettings) -> Boolean,
     onEnrollSync: (CharArray, CharArray, (SyncEnrollmentOutcome) -> Unit) -> Unit,
     onRefreshSync: () -> Unit,
+    onBeginFirefoxLogin: () -> Unit = {},
+    onRefreshFirefoxSync: () -> Unit = {},
+    onSignOutFirefoxSync: () -> Unit = {},
+    onOpenZenTab: (url: String, containerGuid: String?) -> Unit = { _, _ -> },
     onFilterStudio: () -> Unit,
     onExportAppData: () -> Unit,
     onImportAppData: () -> Unit,
@@ -420,6 +428,15 @@ internal fun SettingsScreen(
                     onBack = { onDestinationChanged(SettingsDestination.Home) },
                 )
 
+                SettingsDestination.FirefoxSync -> FirefoxSyncSettingsPage(
+                    state = firefoxSyncState,
+                    onSignIn = onBeginFirefoxLogin,
+                    onRefresh = onRefreshFirefoxSync,
+                    onSignOut = onSignOutFirefoxSync,
+                    onOpenTab = onOpenZenTab,
+                    onBack = { onDestinationChanged(SettingsDestination.Home) },
+                )
+
                 SettingsDestination.ProtectionAndData -> ProtectionAndDataSettingsPage(
                     blockerSettings = blockerSettings,
                     blockedCount = blockedCount,
@@ -472,6 +489,13 @@ private fun SettingsHomePage(
             title = stringResource(R.string.sync_settings_title),
             subtitle = stringResource(R.string.settings_home_sync_summary),
             onClick = { onDestinationChanged(SettingsDestination.Sync) },
+        )
+        SettingsPageSpacer()
+        SettingsLink(
+            icon = Icons.Default.AccountCircle,
+            title = stringResource(R.string.firefox_sync_settings_title),
+            subtitle = stringResource(R.string.settings_home_firefox_sync_summary),
+            onClick = { onDestinationChanged(SettingsDestination.FirefoxSync) },
         )
         SettingsPageSpacer()
         SettingsLink(

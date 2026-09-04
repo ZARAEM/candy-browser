@@ -266,6 +266,7 @@ import dev.sk2andy.materialbrowser.browser.BrowserWebView
 import dev.sk2andy.materialbrowser.browser.BrowserProfile
 import dev.sk2andy.materialbrowser.browser.isSyncLinked
 import dev.sk2andy.materialbrowser.browser.isSynced
+import dev.sk2andy.firefoxsync.FirefoxAccountLoginAttempt
 import dev.sk2andy.materialbrowser.browser.BrowserTab
 import dev.sk2andy.materialbrowser.browser.FindInPageRules
 import dev.sk2andy.materialbrowser.browser.cast.CastUiState
@@ -397,6 +398,7 @@ private data class ActiveTabReorder(
 )
 
 private enum class BrowserBackTarget {
+    FirefoxLogin,
     ReaderStudio,
     FilterStudio,
     SnoozedTabs,
@@ -464,6 +466,7 @@ internal fun BrowserScreen(
     val aiModeSelectedState = remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
     var settingsDestination by rememberSaveable { mutableStateOf(SettingsDestination.Home) }
+    var firefoxLoginAttempt by remember { mutableStateOf<FirefoxAccountLoginAttempt?>(null) }
     var snoozedTabsVisible by rememberSaveable { mutableStateOf(false) }
     var snoozeTabId by remember { mutableStateOf<String?>(null) }
     var privacyXRayTabId by remember { mutableStateOf<String?>(null) }
@@ -1242,6 +1245,7 @@ internal fun BrowserScreen(
 
     val currentBackTarget by rememberUpdatedState(
         when {
+            firefoxLoginAttempt != null -> BrowserBackTarget.FirefoxLogin
             readerStudioSession != null -> BrowserBackTarget.ReaderStudio
             filterStudioVisible -> BrowserBackTarget.FilterStudio
             snoozedTabsVisible -> BrowserBackTarget.SnoozedTabs
@@ -1274,6 +1278,10 @@ internal fun BrowserScreen(
                 }
             }
             when (target) {
+                BrowserBackTarget.FirefoxLogin -> {
+                    controller.cancelFirefoxLogin()
+                    firefoxLoginAttempt = null
+                }
                 BrowserBackTarget.ReaderStudio -> readerStudioSession = null
                 BrowserBackTarget.FilterStudio -> filterStudioVisible = false
                 BrowserBackTarget.SnoozedTabs -> snoozedTabsVisible = false
@@ -2129,6 +2137,7 @@ internal fun BrowserScreen(
                 toppingCatalogState = toppingCatalogState,
                 syncState = controller.syncState,
                 syncIconCatalog = controller.syncIconCatalog,
+                firefoxSyncState = controller.firefoxSyncState,
                 onDestinationChanged = { settingsDestination = it },
                 onAppearanceSettingsChanged = controller::updateAppearanceSettings,
                 onDownloadSettingsChanged = controller::updateDownloadSettings,
@@ -2235,6 +2244,12 @@ internal fun BrowserScreen(
                 onConfigureSync = controller::configureSync,
                 onEnrollSync = controller::enrollSync,
                 onRefreshSync = controller::refreshSync,
+                onBeginFirefoxLogin = { firefoxLoginAttempt = controller.beginFirefoxLogin() },
+                onRefreshFirefoxSync = controller::refreshFirefoxSync,
+                onSignOutFirefoxSync = controller::signOutFirefoxSync,
+                onOpenZenTab = { url, containerGuid ->
+                    if (controller.openZenTab(url, containerGuid)) settingsVisible = false
+                },
                 onFilterStudio = {
                     filterStudioSelectedRuleId = null
                     filterStudioVisible = true
@@ -2363,6 +2378,24 @@ internal fun BrowserScreen(
                     },
                 )
             }
+
+        firefoxLoginAttempt?.let { attempt ->
+            FirefoxAccountLoginOverlay(
+                attempt = attempt,
+                createWebView = { onProgress, onCode, onBlocked ->
+                    controller.createFirefoxAccountLoginWebView(attempt, onProgress, onCode, onBlocked)
+                },
+                releaseWebView = controller::releaseFirefoxAccountLoginWebView,
+                onCode = { code ->
+                    firefoxLoginAttempt = null
+                    controller.completeFirefoxLogin(code)
+                },
+                onCancel = {
+                    controller.cancelFirefoxLogin()
+                    firefoxLoginAttempt = null
+                },
+            )
+        }
 
         if (filterStudioVisible) {
             FilterStudioScreen(
