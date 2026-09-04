@@ -6501,6 +6501,41 @@ internal fun TabOverview(
                 )
                 Spacer(Modifier.height(TAB_OVERVIEW_PROFILE_SPACING))
             }
+            if (controller.activeSpaces.isNotEmpty() || controller.profilesEnabled) {
+                SpaceStrip(
+                    spaces = controller.activeSpaces,
+                    activeSpaceId = controller.activeSpaceId,
+                    enabled = dismissingTabId == null &&
+                        movingTabId == null &&
+                        !profileSwitching &&
+                        exitHero == null &&
+                        reorderAnimation == null &&
+                        activeTabReorder == null &&
+                        tabActionsTabId == null,
+                    onSelect = { spaceId ->
+                        if (controller.selectSpace(spaceId)) {
+                            rootView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            overviewScope.launch {
+                                val selectedIndex = controller.activeTabs
+                                    .indexOfFirst { it.id == controller.selectedTabId }
+                                    .coerceAtLeast(0)
+                                if (controller.tabOverviewMode == TabOverviewMode.Hero) {
+                                    pagerState.scrollToPage(selectedIndex)
+                                }
+                            }
+                        }
+                    },
+                    onAdd = {
+                        rootView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        controller.createSpace()
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        val chromeProgress = ((heroProgress.value - 0.34f) / 0.66f).coerceIn(0f, 1f)
+                        alpha = chromeProgress
+                    },
+                )
+                Spacer(Modifier.height(TAB_OVERVIEW_PROFILE_SPACING))
+            }
             when (controller.tabOverviewMode) {
                 TabOverviewMode.Hero -> HorizontalPager(
                 state = pagerState,

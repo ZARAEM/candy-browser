@@ -24,9 +24,22 @@ Chromium-based Candy engine as a prebuilt jar, and in plain JVM unit tests.
 | Zen schema | `spaces` collection records and snapshot assembly | `ZenSpacesCodec.kt`, `ZenSpacesModels.kt` |
 | Orchestration | Connect, fetch Zen spaces with paging, batched uploads with preconditions | `FirefoxSyncSession.kt` |
 
-Everything above is pure protocol. Persistence of tokens and keys, the Android login surface, the
-applier that maps Zen spaces onto Candy tabs and profiles, and the background scheduler are not
-implemented yet and belong to `app/`, mirroring how Candy Sync splits `sync/` from `data/sync/`.
+Everything above is pure protocol. The Android side mirrors how Candy Sync splits `sync/` from
+`data/sync/`:
+
+| Layer | Responsibility | Main code |
+| --- | --- | --- |
+| Models and defaults | Status enum, repository state, session secrets, cache, the test client id and allowed login hosts | `app/.../sync/firefox/FirefoxSyncModels.kt`, `FirefoxSyncDefaults.kt` |
+| Stores | Non-secret account facts in SharedPreferences; session secrets, the pending login attempt and the last spaces snapshot in Keystore-protected AtomicFiles under `noBackupFilesDir` | `data/sync/firefox/AndroidFirefoxSyncStores.kt`, `FirefoxSyncStateCodec.kt` |
+| Repository | Single-thread executor; begin/complete/cancel login, refresh with `info/collections` change detection and access-token refresh, sign-out with token destroy, error-to-status mapping | `data/sync/firefox/FirefoxSyncRepository.kt` |
+| Login | Interactive WebView on the ephemeral incognito WebView profile, navigation restricted to Mozilla account hosts, document-start WebChannel bridge answering `fxa_status` and `can_link_account` locally and forwarding `oauth_login` | `sync/firefox/FirefoxAccountWebChannelScript.kt`, `BrowserController.createFirefoxAccountLoginWebView`, `ui/FirefoxAccountLoginOverlay.kt` |
+| Settings | Status card, sign-in/refresh/sign-out, diagnostics (last error, last bridge command, skipped ids) and the Zen spaces viewer with tap-to-open | `ui/FirefoxSyncSettingsPage.kt`, `SettingsDestination.FirefoxSync` |
+| Applier | Zen containers to isolated named profiles; Zen spaces and pinned/essential tabs to Candy spaces and pinned tabs; open a synced tab in its container's profile | `browser/ZenContainerProfileRules.kt`, `browser/ZenSpaceMaterializeRules.kt`, `BrowserController.applyFirefoxSyncState`, `BrowserController.openZenTab` |
+
+The applier is read-only for now: Candy never uploads spaces records, never navigates or removes
+existing tabs on sync, and matches synced tabs by Zen id so re-syncs do not duplicate them.
+Refresh runs on app start and on the settings page's **Sync now**; unchanged collections are
+skipped by comparing the server's `spaces` timestamp with the cached one.
 
 ## Protocol summary
 
@@ -71,7 +84,11 @@ Cleartext is `{id, kind, data}`; tombstones are `{id, deleted: true}`. Ids are S
 ## Boundaries
 
 - The OAuth client id must be registered with Mozilla for the `oldsync` scope. Candy has no
-  registration yet; the config type accepts any registered id and the Fenix web-channel redirect.
+  registration yet, so test builds sign in with Firefox for Android's public client id and the
+  web-channel redirect (`FirefoxSyncDefaults.CLIENT_ID`), as Fenix forks do. Register Candy's own
+  id before a public release.
+- The live web-channel handshake and real Zen data cannot be exercised in JVM tests; the settings
+  page's diagnostics block shows the last login message, the last error and skipped record ids.
 - Private tabs, Link Peek previews and Candy Sync workspace secrets never enter Firefox Sync records.
 - Firefox Sync's `addons` collection lists Firefox add-on ids. It is not read: Chromium extensions
   cannot be represented there in either direction.
@@ -86,6 +103,7 @@ Cleartext is `{id, kind, data}`; tombstones are `{id, deleted: true}`. Ids are S
 | Zen record kinds, rejection rules, round trips, snapshot ordering | `ZenSpacesCodecTest` |
 | Paging, engine-version guard, batched uploads, key selection | `FirefoxSyncSessionTest` with a fake transport |
 | HTTP headers, Hawk signing, paging headers, error mapping | `OkHttpFirefoxSyncTransportTest` with MockWebServer |
+| Android codecs, repository state machine, web-channel script, container and space mapping | `app/src/test`: `FirefoxSyncStateCodecTest`, `FirefoxSyncRepositoryTest`, `FirefoxAccountWebChannelScriptTest`, `ZenContainerProfileRulesTest`, `ZenSpacesViewRulesTest`, `ZenSpaceMaterializeRulesTest` |
 
 Run the suite without an Android SDK:
 
@@ -97,7 +115,7 @@ Run the suite without an Android SDK:
 
 | Step | Scope |
 | --- | --- |
-| Account surface | WebView login that injects the web-channel listener, Keystore-protected token and key storage, refresh and sign-out |
-| Applier | Map containers to per-tab WebView profiles, spaces to Candy spaces, pinned and essential tabs, folders and splits onto the tab model; upload Candy changes through `uploadZenSpaces` |
+| Write direction | Upload Candy-side space, pin and container changes through `uploadZenSpaces` with an uploaded-state digest map like Zen's |
+| Folders and splits | Represent Zen folders and split views in the tab overview instead of only in the viewer |
 | Standard collections | `tabs`, `bookmarks`, `history` and `passwords` engines on the same session once the spaces path is proven against a real Zen install |
 | Engine fork | The Chromium-based Candy engine with Chrome extension support consumes this module as a prebuilt jar; nothing here changes |

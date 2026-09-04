@@ -77,9 +77,10 @@ loading, Android setup, backups, protocol details, and the full security model.
 - [ ] Publish the extension to the Chrome Web Store and Mozilla Add-ons
 - [ ] Publish a prebuilt server image to Docker Hub or a similar registry
 - [ ] Offer a hosted solution for people who do not want to self-host
-- [ ] Sync Zen Browser spaces, containers, pinned tabs, folders, and split views through Firefox
-      Sync alongside Candy Sync. The engine-independent protocol client and Zen record codec live in
-      [`firefox-sync/`](docs/sync/firefox-sync.md); the login surface and applier are next
+- [x] Read Zen Browser spaces, containers, pinned tabs, essentials, and folders through Firefox
+      Sync alongside Candy Sync: Mozilla account sign-in, Zen containers as Candy profiles, Zen
+      spaces as Candy spaces. See [`docs/sync/firefox-sync.md`](docs/sync/firefox-sync.md)
+- [ ] Write Candy-side space and pin changes back to Zen through Firefox Sync
 
 ## See Candy in motion
 

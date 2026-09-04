@@ -18,6 +18,8 @@ data class BrowserTab(
     val blockedCount: Int = 0,
     val error: String? = null,
     val syncCandyId: String? = null,
+    val spaceId: String? = null,
+    val zenTabId: String? = null,
 )
 
 val BrowserTab.isSynced: Boolean

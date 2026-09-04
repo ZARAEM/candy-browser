@@ -875,4 +875,5 @@
     <string name="firefox_sync_error_authentication">Mozilla rejected the sign-in. Try again.</string>
     <string name="firefox_sync_error_missing_keys">The account did not provide sync keys. Enable sync in the account settings.</string>
     <string name="firefox_sync_error_failed">Sign-in failed. Check the connection and try again.</string>
+    <string name="space_strip_add">+ Space</string>
 </resources>

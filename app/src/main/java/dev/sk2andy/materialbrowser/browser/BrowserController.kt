@@ -235,6 +235,7 @@ import dev.sk2andy.materialbrowser.data.UserScriptRepository
 import dev.sk2andy.materialbrowser.data.UserScriptValueStore
 import dev.sk2andy.firefoxsync.FirefoxAccountLoginAttempt
 import dev.sk2andy.firefoxsync.FirefoxAccountOAuth
+import dev.sk2andy.materialbrowser.data.BrowserSpaceStore
 import dev.sk2andy.materialbrowser.data.sync.AndroidSyncCacheStore
 import dev.sk2andy.materialbrowser.data.sync.AndroidSyncSettingsStore
 import dev.sk2andy.materialbrowser.data.sync.AndroidSyncVaultStore
@@ -406,6 +407,8 @@ class BrowserController(
 ) {
     val tabs = mutableStateListOf<BrowserTab>()
     val profiles = mutableStateListOf<BrowserProfile>()
+    val spaces = mutableStateListOf<BrowserSpace>()
+    private val activeSpaceIds = mutableStateMapOf<String, String>()
     val previews = mutableStateMapOf<String, Bitmap>()
     val favicons = mutableStateMapOf<String, Bitmap>()
     val history = mutableStateListOf<HistoryEntry>()
@@ -807,6 +810,7 @@ class BrowserController(
     private var isCandyTrailRestoreInProgress = false
     private var candyTrailEpoch = 0
     private val store = BrowserSessionStore(activity)
+    private val spaceStore = BrowserSpaceStore(activity)
     private val historyRepository = BrowsingHistoryRepository.get(activity)
     private val recallRepository = RecallRepository.get(activity)
     private val snoozedTabStore = SnoozedTabStore(activity)
@@ -886,8 +890,12 @@ class BrowserController(
     }
 
     val activeTabs: List<BrowserTab>
-        get() = tabs.filter { tab ->
-            tab.profileId == activeProfileId && tab.id !in transientPopupTabIds
+        get() = activeSpaceId.let { spaceId ->
+            tabs.filter { tab ->
+                tab.profileId == activeProfileId &&
+                    tab.id !in transientPopupTabIds &&
+                    (spaceId == null || BrowserSpaceRules.spaceIdFor(tab, spaces) == spaceId)
+            }
         }.let { activeTabs ->
             if (automaticTabSortingEnabled) {
                 TabAutoSortingRules.orderedTabs(activeTabs, selectedTabId)
@@ -898,6 +906,63 @@ class BrowserController(
 
     private val localProfiles: List<BrowserProfile>
         get() = profiles.filterNot(BrowserProfile::isSynced)
+
+    /** Spaces of the active profile in creation order. */
+    val activeSpaces: List<BrowserSpace>
+        get() = BrowserSpaceRules.spacesFor(spaces, activeProfileId)
+
+    val activeSpaceId: String?
+        get() = activeSpaceIdFor(activeProfileId)
+
+    fun activeSpaceIdFor(profileId: String): String? =
+        BrowserSpaceRules.activeSpaceId(spaces, activeSpaceIds, profileId)
+
+    fun createSpace(name: String? = null, emoji: String? = null): String? {
+        if (isSyncedProfile(activeProfileId) || !BrowserSpaceRules.canAdd(spaces, activeProfileId)) return null
+        val space = BrowserSpace(
+            id = UUID.randomUUID().toString(),
+            profileId = activeProfileId,
+            name = BrowserSpaceRules.sanitizeName(name ?: BrowserSpaceRules.nextDefaultName(spaces, activeProfileId))
+                .ifEmpty { BrowserSpaceRules.nextDefaultName(spaces, activeProfileId) },
+            emoji = BrowserSpaceRules.sanitizeEmoji(emoji.orEmpty()),
+        )
+        spaces += space
+        selectSpace(space.id)
+        return space.id
+    }
+
+    fun selectSpace(spaceId: String): Boolean {
+        val space = spaces.firstOrNull { it.id == spaceId && it.profileId == activeProfileId } ?: return false
+        if (activeSpaceIds[space.profileId] == spaceId && activeTabs.any { it.id == selectedTabId }) return false
+        val previousTabId = selectedTabId
+        clearPermissionActivity(previousTabId)
+        touchTab(previousTabId, System.currentTimeMillis())
+        prepareMediaForTabDeparture(previousTabId)
+        webViews[previousTabId]?.let(::pauseWebView)
+        activeSpaceIds[space.profileId] = spaceId
+        val targetTab = activeTabs.maxByOrNull(BrowserTab::lastAccessedAt)
+            ?: newTabState(spaceId = spaceId).also(tabs::add)
+        updateSelectedTabId(targetTab.id)
+        touchTab(targetTab.id, System.currentTimeMillis())
+        rememberSelectedTab(space.profileId, targetTab.id)
+        persist()
+        return true
+    }
+
+    fun moveTabToSpace(tabId: String, spaceId: String): Boolean {
+        val index = tabs.indexOfFirst { it.id == tabId }
+        if (index < 0) return false
+        val tab = tabs[index]
+        val space = spaces.firstOrNull { it.id == spaceId && it.profileId == tab.profileId } ?: return false
+        if (tab.spaceId == space.id) return false
+        tabs[index] = tab.copy(spaceId = space.id)
+        if (tabId == selectedTabId && activeSpaceId != space.id) {
+            activeTabs.maxByOrNull(BrowserTab::lastAccessedAt)?.let { replacement -> updateSelectedTabId(replacement.id) }
+                ?: selectSpace(space.id)
+        }
+        persist()
+        return true
+    }
 
     val localBrowserProfiles: List<BrowserProfile>
         get() = localProfiles
@@ -1506,6 +1571,10 @@ class BrowserController(
         val (restoredProfiles, restoredActiveProfileId) = store.loadProfiles()
         profiles += restoredProfiles.take(MAX_PROFILES)
         val restoredProfileIds = profiles.mapTo(mutableSetOf(), BrowserProfile::id)
+        BrowserSpaceRules.sanitize(spaceStore.load(), restoredProfileIds).let { restoredSpaces ->
+            spaces += restoredSpaces.spaces
+            activeSpaceIds += restoredSpaces.activeSpaceIds
+        }
         siteCapsules += siteCapsuleStore.load()
             .filter { capsule -> capsule.profileId in restoredProfileIds }
             .let(SiteCapsuleRules::bounded)
@@ -5162,13 +5231,35 @@ class BrowserController(
             isolationSupported = isProfileIsolationSupported,
             newProfileId = { UUID.randomUUID().toString() },
         )
-        if (!reconciliation.changed) return
         reconciliation.updated.forEach { updated ->
             val index = profiles.indexOfFirst { it.id == updated.id }
             if (index >= 0) profiles[index] = updated
         }
         profiles += reconciliation.created
-        persist()
+        val materialization = ZenSpaceMaterializeRules.materialize(
+            snapshot = state.snapshot,
+            profiles = profiles,
+            spaces = spaces,
+            tabs = tabs.filterNot { tab -> isSessionEphemeralTab(tab.id) },
+            defaultProfileId = localProfiles.firstOrNull()?.id ?: activeProfileId,
+            newSpaceId = { UUID.randomUUID().toString() },
+        )
+        materialization.updatedSpaces.forEach { updated ->
+            val index = spaces.indexOfFirst { it.id == updated.id }
+            if (index >= 0) spaces[index] = updated
+        }
+        spaces += materialization.createdSpaces
+        val nowMillis = System.currentTimeMillis()
+        materialization.newTabs.forEach { synced ->
+            tabs += newTabState(
+                url = synced.url,
+                nowMillis = nowMillis,
+                profileId = synced.profileId,
+                spaceId = synced.spaceId,
+                zenTabId = synced.zenTabId,
+            ).copy(isPinned = true, title = synced.title.ifBlank { AddressResolver.displayText(synced.url) }, isLoading = false)
+        }
+        if (reconciliation.changed || materialization.changed) persist()
     }
 
     fun onAppearanceConfigurationChanged() {
@@ -9772,6 +9863,7 @@ class BrowserController(
             .takeIf { id -> persistentProfiles.any { it.id == id } }
             ?: persistentProfiles.first().id
         store.saveProfiles(persistentProfiles, persistentActiveProfileId)
+        spaceStore.save(BrowserSpaceSnapshot(spaces.toList(), activeSpaceIds.toMap()))
         savePersistentFilterRules()
     }
 
@@ -10105,6 +10197,8 @@ class BrowserController(
         isIncognito: Boolean = false,
         openerTabId: String? = null,
         profileId: String = activeProfileId,
+        spaceId: String? = activeSpaceIdFor(profileId),
+        zenTabId: String? = null,
     ) = BrowserTab(
         id = UUID.randomUUID().toString(),
         lastAccessedAt = nowMillis,
@@ -10117,6 +10211,8 @@ class BrowserController(
         syncCandyId = UUID.randomUUID().toString().takeIf {
             !isIncognito && isSyncTargetProfile(profileId)
         },
+        spaceId = spaceId,
+        zenTabId = zenTabId,
     )
 
     private fun touchTab(tabId: String, nowMillis: Long) {

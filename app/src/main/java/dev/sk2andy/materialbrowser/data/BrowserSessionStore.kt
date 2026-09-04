@@ -54,6 +54,10 @@ class BrowserSessionStore internal constructor(
                             url = item.optString("url", BLANK_URL),
                             syncCandyId = item.optString("syncCandyId")
                                 .takeIf(SyncTabRules::isValidCandyId),
+                            spaceId = item.optString("spaceId").trim()
+                                .takeIf { id -> id.isNotEmpty() && id.length <= 64 },
+                            zenTabId = item.optString("zenTabId").trim()
+                                .takeIf { id -> id.isNotEmpty() && id.length <= 64 },
                         ),
                     )
                 }
@@ -119,7 +123,9 @@ class BrowserSessionStore internal constructor(
                         .put("isPinned", tab.isPinned)
                         .put("title", tab.title)
                         .put("url", tab.url)
-                        .put("syncCandyId", tab.syncCandyId),
+                        .put("syncCandyId", tab.syncCandyId)
+                        .put("spaceId", tab.spaceId)
+                        .put("zenTabId", tab.zenTabId),
                 )
             }
             editor.putString(KEY_TABS, array.toString())
