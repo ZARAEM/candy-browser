@@ -14,6 +14,7 @@ creating a duplicate self profile.
 | Deploy, configure, back up, and monitor the server | [`server.md`](server.md) |
 | Build, load, configure, and test the extension | [`extension.md`](extension.md) |
 | Android setup, profile behavior, security, and code ownership | [`app-integration.md`](app-integration.md) |
+| Sync Zen Browser spaces through Firefox Sync with a Mozilla account | [`firefox-sync.md`](firefox-sync.md) |
 | Normative threat model and cryptographic contract | [`../../sync/SECURITY.md`](../../sync/SECURITY.md) |
 | REST, schemas, fixtures, and shared icon catalog | [`../../sync/protocol/README.md`](../../sync/protocol/README.md) |
 
@@ -106,6 +107,7 @@ implemented.
 | `sync/scripts/` | Clean-room Docker verification and real two-device E2E |
 | `app/src/main/.../sync/` | Android protocol, cryptography, and models |
 | `app/src/main/.../data/sync/` | Android protected stores, transport, and repository |
+| `firefox-sync/` | Engine-independent Firefox Sync client and Zen spaces codec (JVM module) |
 
 Run the clean-room server/extension gate from the repository root:
 

@@ -21,6 +21,7 @@
 | `blocking/` | Network/cosmetic filtering, Candy Rules, Privacy X-Ray |
 | `capsule/` | Site Capsule model, navigation, shortcuts and editor contracts |
 | `reader/` | Reader extraction, library, session and speech |
+| `firefox-sync/` (root module) | Engine-independent Firefox Sync protocol client and Zen spaces codec; no Android dependency |
 
 ## Working rules
 
@@ -40,6 +41,7 @@
 | Change | Minimum check |
 | --- | --- |
 | Pure Kotlin rules/models | `./gradlew testFullDebugUnitTest testFossDebugUnitTest` |
+| `firefox-sync/` module | `./gradlew :firefox-sync:test` |
 | Android resources, manifest, build config | `./gradlew lintFullDebug lintFossDebug assembleFullDebug assembleFossDebug` |
 | Compose, WebView, storage, Android contracts | Relevant `src/androidTest` test on an API 34+ device/emulator |
 | Filter compiler or generated assets | Matching script tests plus clean generated-asset diff |

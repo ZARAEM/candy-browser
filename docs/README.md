@@ -11,6 +11,7 @@
 | Reader Studio | [`reader-studio/README.md`](reader-studio/README.md) | Extraction, reader sessions, local library, speech |
 | Privacy protection | [`privacy-protection/README.md`](privacy-protection/README.md) | Request/cosmetic blocking, Candy Rules, X-Ray, Permission Radar |
 | Candy Sync | [`sync/README.md`](sync/README.md) | Self-hosted server, browser extension, Android integration, and E2EE protocol |
+| Firefox Sync | [`sync/firefox-sync.md`](sync/firefox-sync.md) | Mozilla account login, Sync 1.5 storage crypto, and Zen Browser spaces records |
 
 ## Cross-cutting lookup
 

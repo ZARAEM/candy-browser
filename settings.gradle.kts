@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MaterialBrowser"
 include(":app")
+include(":firefox-sync")
