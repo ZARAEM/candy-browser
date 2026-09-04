@@ -52,11 +52,12 @@ internal fun FirefoxAccountLoginOverlay(
     releaseWebView: (WebView) -> Unit,
     onCode: (String) -> Unit,
     onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var progress by remember(attempt.state) { mutableIntStateOf(0) }
     Surface(
-        modifier = Modifier.fillMaxSize().testTag(FirefoxAccountLoginTestTags.Overlay),
+        modifier = modifier.fillMaxSize().testTag(FirefoxAccountLoginTestTags.Overlay),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {

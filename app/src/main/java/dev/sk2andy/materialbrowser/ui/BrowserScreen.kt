@@ -2394,6 +2394,7 @@ internal fun BrowserScreen(
                     controller.cancelFirefoxLogin()
                     firefoxLoginAttempt = null
                 },
+                modifier = Modifier.zIndex(40f),
             )
         }
 

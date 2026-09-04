@@ -87,7 +87,6 @@ internal fun FirefoxSyncSettingsPage(
             } else {
                 Button(
                     onClick = onSignIn,
-                    enabled = state.status != FirefoxSyncStatus.SigningIn,
                     modifier = Modifier.testTag(FirefoxSyncSettingsTestTags.SignIn),
                 ) {
                     Text(stringResource(R.string.firefox_sync_action_sign_in))
