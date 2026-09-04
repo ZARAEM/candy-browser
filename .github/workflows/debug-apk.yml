@@ -1,0 +1,63 @@
+name: Build debug APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: Product flavor to build
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - foss
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ inputs.flavor }} debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4.4.1
+
+      - name: Run unit tests and build the debug APK
+        env:
+          FLAVOR: ${{ inputs.flavor }}
+        run: |
+          set -euo pipefail
+          capitalized="$(printf '%s' "$FLAVOR" | sed 's/./\U&/')"
+          ./gradlew --no-daemon \
+            :firefox-sync:test \
+            ":app:test${capitalized}DebugUnitTest" \
+            ":app:assemble${capitalized}Debug" \
+            -Pcandy.debugApplicationIdSuffix=.debug \
+            "-Pcandy.debugAppLabel=Candy Browser Debug"
+          mkdir -p dist
+          cp "app/build/outputs/apk/${FLAVOR}/debug/app-${FLAVOR}-debug.apk" \
+            "dist/CandyBrowser-${FLAVOR}-debug-${GITHUB_SHA::7}.apk"
+          sha256sum dist/*.apk > dist/SHA256SUMS
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: candy-browser-${{ inputs.flavor }}-debug-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
