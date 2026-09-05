@@ -38,6 +38,8 @@ class FirefoxAccountOAuthTest {
         assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", query["code_challenge"])
         assertEquals("offline", query["access_type"])
         assertEquals("oauth_webchannel_v1", query["context"])
+        // accounts.firefox.com answers "Invalid Query Parameters" when the web-channel URN is sent as redirect_uri.
+        assertNull(query["redirect_uri"])
         assertEquals("https%3A%2F%2Fidentity.mozilla.com%2Fapps%2Foldsync+profile", query["scope"])
         assertEquals(
             attempt.keysPublicJwk,
@@ -46,6 +48,15 @@ class FirefoxAccountOAuthTest {
         assertThrows(IllegalArgumentException::class.java) {
             FirefoxAccountOAuth.authorizationUrl(config, attempt, scopes = listOf("profile"))
         }
+    }
+
+    @Test
+    fun `authorization URL for a redirect client sends redirect_uri without a context`() {
+        val redirectConfig = config.copy(redirectUri = "https://candy.example/oauth/done")
+        val url = URI(FirefoxAccountOAuth.authorizationUrl(redirectConfig, attempt))
+        val query = url.rawQuery.split('&').associate { it.substringBefore('=') to it.substringAfter('=') }
+        assertEquals("https%3A%2F%2Fcandy.example%2Foauth%2Fdone", query["redirect_uri"])
+        assertNull(query["context"])
     }
 
     @Test

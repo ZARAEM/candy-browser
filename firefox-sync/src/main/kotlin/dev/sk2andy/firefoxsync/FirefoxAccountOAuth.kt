@@ -135,11 +135,12 @@ object FirefoxAccountOAuth {
             add("code_challenge" to codeChallenge(attempt.codeVerifier))
             add("access_type" to "offline")
             add("keys_jwk" to SyncEncoding.base64Url(SyncEncoding.utf8(attempt.keysPublicJwk)))
-            add("redirect_uri" to config.redirectUri)
             add("response_type" to "code")
             add("action" to "email")
             add("entrypoint" to entrypoint)
-            context?.let { add("context" to it) }
+            // Mozilla's accounts server rejects the web-channel URN as a redirect_uri; web-channel
+            // clients send `context` instead of `redirect_uri`, exactly like application-services.
+            if (context == null) add("redirect_uri" to config.redirectUri) else add("context" to context)
             email?.takeIf { it.isNotBlank() && it.length <= 320 }?.let { add("email" to it) }
         }
         return config.contentUrl + "/authorization?" + parameters.joinToString("&") { (key, value) ->
