@@ -47,7 +47,7 @@ skipped by comparing the server's `spaces` timestamp with the cached one.
 | --- | --- | --- |
 | Login | `https://accounts.firefox.com/authorization` | PKCE S256, `access_type=offline`, `keys_jwk` P-256 public key, scopes `https://identity.mozilla.com/apps/oldsync` and `profile`. Web-channel clients pass `context=oauth_webchannel_v1` and read the `fxaccounts:oauth_login` message; redirect clients parse the redirect URI. Both check `state` in constant time |
 | Token | `https://oauth.accounts.firefox.com/v1/token` | Public-client code exchange with `code_verifier`; refresh with `refresh_token`; `destroy` on sign-out |
-| Keys | `keys_jwe` in the token response | Compact JWE, `ECDH-ES` with `A256GCM`, Concat KDF with SHA-256. The `oldsync` scoped key `k` is the 64-byte kSync; `kid` is `<rotation timestamp>-<base64url(SHA-256(kSync)[0..16])>` and is verified against the key |
+| Keys | `keys_jwe` in the token response | Compact JWE, `ECDH-ES` with `A256GCM`, Concat KDF with SHA-256. The `oldsync` scoped key `k` is the 64-byte kSync; `kid` is the server's `<rotation timestamp>-<base64url(SHA-256(kB)[0..16])>` and is validated for shape only, because kB never reaches a scoped-key client; it is forwarded verbatim as `X-KeyID` |
 | Storage login | `https://token.services.mozilla.com/1.0/sync/1.5` | `Authorization: Bearer <access token>` plus `X-KeyID: <kid>`; the response yields Hawk id/key and the node's `api_endpoint`, which must be https |
 | Layout | `meta/global` (cleartext) | `storageVersion` must be 5; the Zen engine appears as `engines.spaces` with `version` 3 |
 | Keys | `crypto/keys` | Decrypted with kSync split into encryption and HMAC halves; per-collection bundles override `default` |

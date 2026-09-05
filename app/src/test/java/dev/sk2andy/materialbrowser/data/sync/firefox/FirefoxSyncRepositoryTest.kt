@@ -11,7 +11,6 @@ import dev.sk2andy.firefoxsync.SyncBso
 import dev.sk2andy.firefoxsync.SyncCollectionKeys
 import dev.sk2andy.firefoxsync.SyncCollectionPage
 import dev.sk2andy.firefoxsync.SyncKeyBundle
-import dev.sk2andy.firefoxsync.SyncKeyRules
 import dev.sk2andy.firefoxsync.SyncPostResult
 import dev.sk2andy.firefoxsync.SyncRecordCrypto
 import dev.sk2andy.firefoxsync.SyncStorageCodec
@@ -38,7 +37,7 @@ import org.junit.Test
 
 class FirefoxSyncRepositoryTest {
     private val kSync = ByteArray(64) { (it * 5).toByte() }
-    private val kid = "1700000000000-" + SyncKeyRules.kidSuffix(kSync)
+    private val kid = "1700000000000-S7Bvjk46dxXSAdVz0KpCNw"
     private val spacesBundle = SyncKeyBundle(ByteArray(32) { 8 }, ByteArray(32) { 9 })
     private val recordCrypto = SyncRecordCrypto()
     private val settingsStore = MemorySettingsStore()

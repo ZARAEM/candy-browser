@@ -8,7 +8,7 @@ import org.junit.Test
 
 class FirefoxSyncSessionTest {
     private val kSync = ByteArray(64) { (it * 3).toByte() }
-    private val keys = FirefoxSyncKeys(kSync, "1700000000000-" + SyncKeyRules.kidSuffix(kSync))
+    private val keys = FirefoxSyncKeys(kSync, "1700000000000-S7Bvjk46dxXSAdVz0KpCNw")
     private val credentials = SyncStorageCredentials("hawk-id", "hawk-key", 7, "https://node.example/1.5/7", 3600, null)
     private val spacesBundle = SyncKeyBundle(ByteArray(32) { 5 }, ByteArray(32) { 6 })
     private val recordCrypto = SyncRecordCrypto()

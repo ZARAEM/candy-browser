@@ -20,13 +20,22 @@ class SyncKeyBundleTest {
     }
 
     @Test
-    fun `kid suffix and client state match reference derivation`() {
-        assertEquals("_eq5rPNxA2K9JljNyaKejw", SyncKeyRules.kidSuffix(kSync))
-        assertEquals("fdeab9acf3710362bd2658cdc9a29e8f", SyncKeyRules.clientState(kSync))
-        assertTrue(SyncKeyRules.isValidKid("1690000000000-_eq5rPNxA2K9JljNyaKejw", kSync))
-        assertFalse(SyncKeyRules.isValidKid("1690000000000-AAAAAAAAAAAAAAAAAAAAAA", kSync))
-        assertFalse(SyncKeyRules.isValidKid("_eq5rPNxA2K9JljNyaKejw", kSync))
+    fun `kid suffix and client state match the server derivation from kB`() {
+        val kB = ByteArray(32) { 7 }
+        assertEquals("S7Bvjk46dxXSAdVz0KpCNw", SyncKeyRules.kidSuffix(kB))
+        assertEquals("4bb06f8e4e3a7715d201d573d0aa4237", SyncKeyRules.clientState(kB))
+        assertThrows(IllegalArgumentException::class.java) { SyncKeyRules.kidSuffix(kSync) }
         assertEquals(1690000000000L, SyncKeyRules.keyRotationTimestamp("1690000000000-_eq5rPNxA2K9JljNyaKejw"))
+    }
+
+    @Test
+    fun `kid validation checks the shape only`() {
+        assertTrue(SyncKeyRules.isValidKid("1690000000000-_eq5rPNxA2K9JljNyaKejw"))
+        assertTrue(SyncKeyRules.isValidKid("1690000000000-AAAAAAAAAAAAAAAAAAAAAA"))
+        assertFalse(SyncKeyRules.isValidKid("_eq5rPNxA2K9JljNyaKejw"))
+        assertFalse(SyncKeyRules.isValidKid("1690000000000-tooshort"))
+        assertFalse(SyncKeyRules.isValidKid("1690000000000-_eq5rPNxA2K9JljNyaKej+"))
+        assertFalse(SyncKeyRules.isValidKid("abc-_eq5rPNxA2K9JljNyaKejw"))
     }
 
     @Test
@@ -39,8 +48,11 @@ class SyncKeyBundleTest {
     }
 
     @Test
-    fun `sync keys reject a kid that does not belong to the key`() {
-        assertThrows(IllegalArgumentException::class.java) { FirefoxSyncKeys(kSync, "1-AAAAAAAAAAAAAAAAAAAAAA") }
+    fun `sync keys reject a malformed kid but trust any well-formed server kid`() {
+        assertThrows(IllegalArgumentException::class.java) { FirefoxSyncKeys(kSync, "not-a-kid") }
+        assertThrows(IllegalArgumentException::class.java) { FirefoxSyncKeys(ByteArray(32), "1-AAAAAAAAAAAAAAAAAAAAAA") }
+        // The suffix is a hash of kB, which the client never sees, so it is not checked against kSync.
+        FirefoxSyncKeys(kSync, "1-AAAAAAAAAAAAAAAAAAAAAA").destroy()
         val keys = FirefoxSyncKeys(kSync, "1690000000000-_eq5rPNxA2K9JljNyaKejw")
         keys.destroy()
         assertArrayEquals(ByteArray(64), keys.kSync)

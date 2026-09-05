@@ -53,11 +53,15 @@ class SyncKeyBundle(encryptionKey: ByteArray, hmacKey: ByteArray) {
     }
 }
 
-/** Identity material for one Firefox Sync storage login. */
+/**
+ * Identity material for one Firefox Sync storage login. The `kid` is the server's key id and is
+ * checked for shape only: Mozilla derives it from SHA-256(kB), and kB never reaches a scoped-key
+ * client (see [SyncKeyRules.kidSuffix]).
+ */
 class FirefoxSyncKeys(kSync: ByteArray, val kid: String) {
     init {
         require(kSync.size == SyncKeyBundle.KSYNC_BYTES) { "kSync must be 64 bytes" }
-        require(SyncKeyRules.isValidKid(kid, kSync)) { "kid does not match kSync" }
+        require(SyncKeyRules.isValidKid(kid)) { "Malformed kid" }
     }
 
     val kSync: ByteArray = kSync.copyOf()
@@ -78,20 +82,25 @@ object SyncKeyRules {
         return hkdfSha256(inputKey = kB, salt = ByteArray(0), info = SyncEncoding.utf8(OLD_SYNC_INFO), length = SyncKeyBundle.KSYNC_BYTES)
     }
 
-    /** `kid` suffix: base64url of the first 16 bytes of SHA-256(kSync). */
-    fun kidSuffix(kSync: ByteArray): String = SyncEncoding.base64Url(keyHashPrefix(kSync))
+    /**
+     * `kid` suffix as the account server computes it (`fxa-crypto-relier` `_deriveLegacySyncKey`):
+     * base64url of the first 16 bytes of SHA-256(kB). kB is the 32-byte account key that only the
+     * server and BrowserID-era clients hold, so a scoped-key client cannot recompute the kid from
+     * kSync and must trust the value delivered in `keys_jwe`. Kept for tests and the legacy kB path.
+     */
+    fun kidSuffix(kB: ByteArray): String = SyncEncoding.base64Url(keyHashPrefix(kB))
 
-    /** Legacy `X-Client-State` value: hex of the first 16 bytes of SHA-256(kSync). */
-    fun clientState(kSync: ByteArray): String = SyncEncoding.hex(keyHashPrefix(kSync))
+    /** Legacy `X-Client-State` value: hex of the first 16 bytes of SHA-256(kB). */
+    fun clientState(kB: ByteArray): String = SyncEncoding.hex(keyHashPrefix(kB))
 
-    fun isValidKid(kid: String, kSync: ByteArray): Boolean =
-        kidPattern.matches(kid) && kid.substringAfter('-') == kidSuffix(kSync)
+    /** Shape check only: `<rotation timestamp>-<22 base64url characters>`. */
+    fun isValidKid(kid: String): Boolean = kidPattern.matches(kid)
 
     fun keyRotationTimestamp(kid: String): Long = kid.substringBefore('-').toLong()
 
-    private fun keyHashPrefix(kSync: ByteArray): ByteArray {
-        require(kSync.size == SyncKeyBundle.KSYNC_BYTES) { "kSync must be 64 bytes" }
-        return MessageDigest.getInstance("SHA-256").digest(kSync).copyOfRange(0, 16)
+    private fun keyHashPrefix(kB: ByteArray): ByteArray {
+        require(kB.size == SyncKeyBundle.KEY_BYTES) { "kB must be 32 bytes" }
+        return MessageDigest.getInstance("SHA-256").digest(kB).copyOfRange(0, 16)
     }
 
     internal fun hkdfSha256(inputKey: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
